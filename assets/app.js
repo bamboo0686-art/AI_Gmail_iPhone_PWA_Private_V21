@@ -3,6 +3,7 @@ const DB_KEY = "xinyu_gmail_agent_v20";
 const AUDIT_KEY = "xinyu_gmail_agent_audit_v20";
 let deferredInstallPrompt = null;
 let currentFilter = "all";
+const modalDialog = document.getElementById("modal");
 
 const STAGES = {
   imported:"已匯入", prechecked:"已預檢", candidateGenerated:"已產生候選",
@@ -165,13 +166,13 @@ function navigate(id){
   window.scrollTo(0,0);
 }
 function closeModal(){
-  if(typeof modal.close==="function")modal.close();
-  else modal.removeAttribute("open");
+  if(typeof modalDialog.close==="function")modalDialog.close();
+  else modalDialog.removeAttribute("open");
 }
 function modal(title,html){
   modalTitle.textContent=title;modalBody.innerHTML=html;
-  if(typeof modal.showModal==="function")modal.showModal();
-  else modal.setAttribute("open","");
+  if(typeof modalDialog.showModal==="function")modalDialog.showModal();
+  else modalDialog.setAttribute("open","");
 }
 function createDemo(){
   const tasks=loadTasks();
