@@ -164,8 +164,14 @@ function navigate(id){
   document.querySelectorAll(".bottom-nav button").forEach(b=>b.classList.toggle("active",b.dataset.nav===id));
   window.scrollTo(0,0);
 }
+function closeModal(){
+  if(typeof modal.close==="function")modal.close();
+  else modal.removeAttribute("open");
+}
 function modal(title,html){
-  modalTitle.textContent=title;modalBody.innerHTML=html;modal.showModal();
+  modalTitle.textContent=title;modalBody.innerHTML=html;
+  if(typeof modal.showModal==="function")modal.showModal();
+  else modal.setAttribute("open","");
 }
 function createDemo(){
   const tasks=loadTasks();
@@ -206,7 +212,7 @@ function addTask(){
 }
 function confirmAddTask(){
   const n=document.getElementById("newTaskName").value.trim();if(!n)return;
-  const t=loadTasks();t.push(makeTask(n));saveTasks(t);modal.close();
+  const t=loadTasks();t.push(makeTask(n));saveTasks(t);closeModal();
 }
 function installHelp(){
   modal("加入 iPhone 主畫面",`<p>請用 Safari 開啟本系統，點底部「分享」按鈕 →「加入主畫面」→「加入」。</p>
@@ -230,7 +236,7 @@ function about(){
 
 document.querySelectorAll("[data-nav]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.nav)));
 runNextBtn.onclick=runNext;demoDataBtn.onclick=createDemo;exportBtn.onclick=exportBackup;addTaskBtn.onclick=addTask;
-modalClose.onclick=()=>modal.close();installHelpBtn.onclick=installHelp;diagnosticsBtn.onclick=diagnostics;aboutBtn.onclick=about;
+modalClose.onclick=closeModal;installHelpBtn.onclick=installHelp;diagnosticsBtn.onclick=diagnostics;aboutBtn.onclick=about;
 backupRestoreBtn.onclick=()=>modal("備份／還原","目前已支援 JSON 備份匯出；正式還原匯入可在下一版加入檔案選擇器。");
 csvInput.addEventListener("change",e=>{if(e.target.files[0])importCSV(e.target.files[0])});
 taskFilters.querySelectorAll("button").forEach(b=>b.onclick=()=>{currentFilter=b.dataset.filter;taskFilters.querySelectorAll("button").forEach(x=>x.classList.remove("active"));b.classList.add("active");renderTasks()});
