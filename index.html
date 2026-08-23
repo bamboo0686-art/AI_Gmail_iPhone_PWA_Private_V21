@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#111111" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Gmail AI Agent" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+  <link rel="stylesheet" href="assets/app.css" />
+  <title>AI 個人 Gmail 智慧註冊代理中心</title>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">iPhone Private PWA · V20</div>
+        <h1>Gmail AI Agent</h1>
+      </div>
+      <button id="installBtn" class="ghost hidden">安裝</button>
+    </header>
+
+    <main id="main">
+      <section id="home" class="view active">
+        <div class="hero">
+          <div>
+            <div class="eyebrow">AI 任務總覽</div>
+            <h2>今天要處理什麼？</h2>
+            <p>系統優先處理可安全自動執行的工作；Google 本人驗證、CAPTCHA、OTP 一律交由 Human Gate。</p>
+          </div>
+          <button id="runNextBtn" class="primary">AI 執行下一筆</button>
+        </div>
+
+        <div class="grid" id="summaryGrid"></div>
+
+        <div class="card">
+          <div class="card-title">AI 建議下一筆</div>
+          <div id="nextTaskCard" class="empty">目前沒有可處理任務</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">快速操作</div>
+          <div class="actions">
+            <button data-nav="import" class="secondary">匯入 CSV</button>
+            <button id="demoDataBtn" class="secondary">建立測試資料</button>
+            <button id="exportBtn" class="secondary">匯出備份</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="tasks" class="view">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Task Center</div>
+            <h2>任務中心</h2>
+          </div>
+          <button id="addTaskBtn" class="primary small">＋新增</button>
+        </div>
+        <div class="segmented" id="taskFilters">
+          <button class="active" data-filter="all">全部</button>
+          <button data-filter="ready">可處理</button>
+          <button data-filter="human">等待本人</button>
+          <button data-filter="failed">異常</button>
+          <button data-filter="completed">完成</button>
+        </div>
+        <div id="taskList"></div>
+      </section>
+
+      <section id="agent" class="view">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Autonomous Agent</div>
+            <h2>AI Agent 中心</h2>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">目前決策</div>
+          <div id="agentDecision" class="empty">尚未執行 AI 分析</div>
+        </div>
+        <div class="card">
+          <div class="card-title">永久安全規則</div>
+          <ul class="rule-list">
+            <li>CAPTCHA → Human Gate</li>
+            <li>OTP／簡訊驗證 → Human Gate</li>
+            <li>Google 本人／安全驗證 → Human Gate</li>
+            <li>失敗最多自動重試 3 次，之後轉異常中心</li>
+            <li>不保存 OTP、Cookie、驗證碼等敏感資料</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title">AI 成效</div>
+          <div id="analytics"></div>
+        </div>
+      </section>
+
+      <section id="human" class="view">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Human Gate</div>
+            <h2>等待本人</h2>
+          </div>
+        </div>
+        <div id="humanList"></div>
+      </section>
+
+      <section id="more" class="view">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Private PWA</div>
+            <h2>更多</h2>
+          </div>
+        </div>
+
+        <div class="menu-list">
+          <button data-nav="import" class="menu-item"><span>智慧匯入</span><span>›</span></button>
+          <button id="backupRestoreBtn" class="menu-item"><span>備份／還原</span><span>›</span></button>
+          <button id="diagnosticsBtn" class="menu-item"><span>診斷與恢復</span><span>›</span></button>
+          <button id="installHelpBtn" class="menu-item"><span>加入 iPhone 主畫面</span><span>›</span></button>
+          <button id="aboutBtn" class="menu-item"><span>版本與狀態</span><span>›</span></button>
+        </div>
+      </section>
+
+      <section id="import" class="view">
+        <div class="section-head">
+          <button data-nav="more" class="back">‹</button>
+          <div>
+            <div class="eyebrow">Smart Import</div>
+            <h2>智慧匯入</h2>
+          </div>
+        </div>
+        <div class="card">
+          <p>支援 CSV。系統會自動辨識「姓名／中文姓名／申請人姓名／Name」等欄位，不再依賴固定工作表名稱。</p>
+          <input type="file" id="csvInput" accept=".csv,text/csv" />
+          <div id="importStatus" class="status">尚未匯入</div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button data-nav="home" class="active"><span>⌂</span><small>首頁</small></button>
+      <button data-nav="tasks"><span>☷</span><small>任務</small></button>
+      <button data-nav="agent"><span>✦</span><small>AI Agent</small></button>
+      <button data-nav="human"><span>♙</span><small>等待本人</small></button>
+      <button data-nav="more"><span>•••</span><small>更多</small></button>
+    </nav>
+  </div>
+
+  <dialog id="modal">
+    <div class="modal-head">
+      <h3 id="modalTitle">訊息</h3>
+      <button id="modalClose" class="ghost">關閉</button>
+    </div>
+    <div id="modalBody"></div>
+  </dialog>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

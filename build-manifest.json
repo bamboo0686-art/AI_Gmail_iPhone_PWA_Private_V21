@@ -1,0 +1,15 @@
+{
+  "product": "AI 個人 Gmail 智慧註冊代理中心 iPhone PWA 私有直接使用版",
+  "version": "V20.0-PWA",
+  "status": "PWA_PRIVATE_BASELINE_READY",
+  "requires_mac": false,
+  "requires_app_store": false,
+  "requires_https_for_install": true,
+  "offline_after_first_load": true,
+  "security": {
+    "captcha": "human_gate",
+    "otp": "human_gate",
+    "google_identity_verification": "human_gate"
+  },
+  "generated_at": "2026-08-23T15:21:11.589735"
+}
