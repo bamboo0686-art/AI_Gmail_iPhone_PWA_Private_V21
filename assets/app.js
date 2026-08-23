@@ -1,4 +1,4 @@
-const VERSION = "20.0.0-PWA";
+const VERSION = "21.0.0-PWA";
 const DB_KEY = "xinyu_gmail_agent_v20";
 const AUDIT_KEY = "xinyu_gmail_agent_audit_v20";
 let deferredInstallPrompt = null;
@@ -166,43 +166,190 @@ function navigate(id){
   document.querySelectorAll(".bottom-nav button").forEach(b=>b.classList.toggle("active",b.dataset.nav===id));
   window.scrollTo(0,0);
 }
-function closeModal(){
-  if(typeof modalDialog.close==="function")modalDialog.close();
-  else modalDialog.removeAttribute("open");
-}
 function modal(title,html){
   modalTitle.textContent=title;modalBody.innerHTML=html;
-  if(typeof modalDialog.showModal==="function")modalDialog.showModal();
+  if(typeof modalDialog.showModal==="function") modalDialog.showModal();
   else modalDialog.setAttribute("open","");
+}
+function closeModal(){
+  if(typeof modalDialog.close==="function") modalDialog.close();
+  else modalDialog.removeAttribute("open");
 }
 function createDemo(){
   const tasks=loadTasks();
   ["王小明","陳怡君","林志豪","張雅婷","黃俊傑"].forEach(n=>tasks.push(makeTask(n)));
   saveTasks(tasks);audit("demo","建立測試資料");
 }
+
+function normalizeCell(value){
+  return String(value ?? "")
+    .normalize("NFKC")
+    .replace(/\uFEFF/g, "")
+    .replace(/[\u00A0\u3000]/g, " ")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[:：()（）\[\]【】「」"'`*＊]/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "")
+    .toLowerCase();
+}
+function detectDelimiter(text){
+  const sample = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(x=>x.trim()).slice(0,12);
+  const candidates = [",","\t",";","|"];
+  let best = ",", bestScore = -1;
+  for(const d of candidates){
+    const counts = sample.map(line => {
+      let q=false,c=0;
+      for(let i=0;i<line.length;i++){
+        const ch=line[i];
+        if(ch==='"') q=!q;
+        else if(ch===d && !q) c++;
+      }
+      return c;
+    });
+    const nonZero = counts.filter(x=>x>0);
+    if(!nonZero.length) continue;
+    const avg = nonZero.reduce((a,b)=>a+b,0)/nonZero.length;
+    const variance = nonZero.reduce((a,b)=>a+Math.abs(b-avg),0)/nonZero.length;
+    const score = nonZero.length*10 + avg - variance;
+    if(score>bestScore){bestScore=score;best=d}
+  }
+  return best;
+}
+function parseDelimitedLine(line, delimiter){
+  const out=[]; let cur="", q=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){
+      if(q && line[i+1]==='"'){cur+='"';i++}
+      else q=!q;
+    } else if(c===delimiter && !q){
+      out.push(cur); cur="";
+    } else cur+=c;
+  }
+  out.push(cur);
+  return out.map(x=>x.replace(/^\uFEFF/,"").trim());
+}
 function parseCSV(text){
-  const lines=text.replace(/\r/g,"").split("\n").filter(x=>x.trim());
-  return lines.map(line=>{
-    const out=[];let cur="",q=false;
-    for(let i=0;i<line.length;i++){const c=line[i];
-      if(c==='"'){if(q&&line[i+1]==='"'){cur+='"';i++}else q=!q}
-      else if(c===","&&!q){out.push(cur);cur=""}else cur+=c}
-    out.push(cur);return out.map(x=>x.trim());
-  });
+  text=String(text||"").replace(/^\uFEFF/,"");
+  const delimiter=detectDelimiter(text);
+  const lines=text.split(/\r?\n/);
+  while(lines.length && !lines[lines.length-1].trim()) lines.pop();
+  return lines.map(line=>parseDelimitedLine(line,delimiter));
+}
+const HEADER_ALIASES = {
+  fullName:["姓名","姓名*","姓名(必填)","姓名（必填）","中文姓名","申請人姓名","申請姓名","申請者姓名","真實姓名","真實姓名*","使用者姓名","註冊人姓名","會員姓名","name","full name","fullname","user name","real name","chinese name"],
+  birthDate:["生日","出生日期","出生年月日","birthdate","dateofbirth","dob"],
+  gender:["性別","gender","sex"],
+  phone:["手機","手機號碼","行動電話","電話","phone","mobile"],
+  email:["gmail","電子郵件","email","候選gmail","候選信箱"],
+  enabled:["是否啟用","啟用","enabled","active","是否使用"]
+};
+function headerMatchScore(row){
+  const normalized=row.map(normalizeCell);
+  let score=0;
+  for(const [key,list] of Object.entries(HEADER_ALIASES)){
+    if(normalized.some(h=>list.some(a=>{
+      const na=normalizeCell(a);
+      return Boolean(h && na) && (h===na || h.includes(na) || na.includes(h));
+    }))) score += key==="fullName" ? 50 : 10;
+  }
+  return score;
+}
+function scanHeaderRows(rows){
+  let bestIndex=-1,bestScore=-1;
+  const limit=Math.min(rows.length,30);
+  for(let i=0;i<limit;i++){
+    if(!rows[i] || !rows[i].some(x=>String(x).trim())) continue;
+    const score=headerMatchScore(rows[i]);
+    if(score>bestScore){bestScore=score;bestIndex=i}
+  }
+  return {bestIndex,bestScore,scanned:limit};
+}
+function findHeaderRow(rows){
+  const result=scanHeaderRows(rows);
+  return result.bestScore>=50 ? result.bestIndex : -1;
 }
 function inferNameIndex(headers){
-  const aliases=["姓名","中文姓名","申請人姓名","name","fullname","full name"];
-  return headers.findIndex(h=>aliases.some(a=>h.toLowerCase().trim()===a.toLowerCase()||h.toLowerCase().includes(a.toLowerCase())));
+  const aliases=HEADER_ALIASES.fullName;
+  const normalized=headers.map(normalizeCell);
+  let idx=normalized.findIndex(h=>aliases.some(a=>{
+    const na=normalizeCell(a);
+    return Boolean(h && na) && (h===na || h.includes(na) || na.includes(h));
+  }));
+  if(idx<0) idx=normalized.findIndex(h=>h==="姓名" || h.endsWith("姓名"));
+  return idx;
+}
+function delimiterLabel(delimiter){ return delimiter==="\t" ? "Tab" : delimiter }
+function importDiagnostic(text,rows,scan){
+  const delimiter=detectDelimiter(text);
+  const preview=rows.slice(0,5).map((r,i)=>`第 ${i+1} 列：${r.join(" | ")}`).join("\n") || "（沒有內容）";
+  return `<h4>AI 匯入診斷</h4>
+    <p>偵測分隔符：<strong>${escapeHtml(delimiterLabel(delimiter))}</strong><br>
+    掃描列數：${scan.scanned}<br>
+    最佳表頭候選：${scan.bestIndex>=0?`第 ${scan.bestIndex+1} 列`:"無"}<br>
+    最佳分數：${Math.max(0,scan.bestScore)}</p>
+    <p>實際讀取前 5 列：</p><pre>${escapeHtml(preview)}</pre>`;
 }
 async function importCSV(file){
-  const text=await file.text(),rows=parseCSV(text);
-  if(rows.length<2){importStatus.textContent="沒有可匯入資料";return}
-  const headers=rows[0],idx=inferNameIndex(headers);
-  if(idx<0){importStatus.textContent="AI 無法辨識姓名欄位";return}
-  const tasks=loadTasks();let count=0;
-  rows.slice(1).forEach(r=>{const name=(r[idx]||"").trim();if(name){tasks.push(makeTask(name));count++}});
-  saveTasks(tasks);audit("import",`CSV 匯入 ${count} 筆`);
-  importStatus.textContent=`已匯入 ${count} 筆資料`;
+  try{
+    let text=await file.text();
+    text=text.replace(/^\uFEFF/,"");
+    const rows=parseCSV(text);
+    const meaningful=rows.filter(r=>r.some(x=>String(x).trim()));
+    if(meaningful.length<2){
+      importStatus.textContent="沒有可匯入資料";
+      return;
+    }
+    const scan=scanHeaderRows(rows);
+    const headerIndex=findHeaderRow(rows);
+    if(headerIndex<0){
+      importStatus.textContent="AI 無法辨識姓名欄位；已建立欄位診斷。";
+      modal("AI 匯入診斷",importDiagnostic(text,rows,scan));
+      return;
+    }
+    const headers=rows[headerIndex];
+    const nameIndex=inferNameIndex(headers);
+    if(nameIndex<0){
+      importStatus.textContent="AI 已找到表頭，但無法定位姓名欄位；已建立欄位診斷。";
+      modal("AI 匯入診斷",importDiagnostic(text,rows,scan));
+      return;
+    }
+    const tasks=loadTasks();
+    const existingNames=new Set(tasks.map(t=>normalizeCell(t.fullName)));
+    let imported=0, skippedBlank=0, skippedDuplicate=0, errors=0;
+    const dataRows=rows.slice(headerIndex+1);
+    for(const row of dataRows){
+      try{
+        if(!row || !row.some(x=>String(x).trim())){skippedBlank++;continue}
+        const name=(row[nameIndex]||"").replace(/^\uFEFF/,"").trim();
+        if(!name){skippedBlank++;continue}
+        const nk=normalizeCell(name);
+        if(!nk){skippedBlank++;continue}
+        if(existingNames.has(nk)){skippedDuplicate++;continue}
+        tasks.push(makeTask(name));
+        existingNames.add(nk);
+        imported++;
+      }catch{ errors++ }
+    }
+    saveTasks(tasks);
+    audit("import",`CSV 匯入 ${imported} 筆；空白 ${skippedBlank}；重複 ${skippedDuplicate}`);
+    const accounted=imported+skippedDuplicate+skippedBlank+errors;
+    importStatus.textContent=`成功 ${imported}｜重複 ${skippedDuplicate}｜空白 ${skippedBlank}｜錯誤 ${errors}`;
+    modal("匯入完成",
+      `<p>原始資料列：${dataRows.length}<br>
+       <strong>成功匯入：${imported}</strong><br>
+       重複略過：${skippedDuplicate}<br>
+       空白略過：${skippedBlank}<br>
+       錯誤：${errors}<br>
+       核對合計：${accounted}</p>
+       <p>偵測分隔符：${escapeHtml(delimiterLabel(detectDelimiter(text)))}<br>
+       實際辨識表頭：第 ${headerIndex+1} 列<br>
+       姓名欄位：${escapeHtml(headers[nameIndex])}<br>
+       掃描列數：${scan.scanned}</p>`);
+  }catch(err){
+    importStatus.textContent=`匯入失敗：${err?.message||err}`;
+    modal("匯入錯誤",`<pre>${escapeHtml(err?.stack||String(err))}</pre>`);
+  }
 }
 function exportBackup(){
   const blob=new Blob([JSON.stringify({version:VERSION,tasks:loadTasks(),audit:loadAudit(),exportedAt:now()},null,2)],{type:"application/json"});
@@ -248,7 +395,7 @@ installBtn.onclick=async()=>{if(deferredInstallPrompt){deferredInstallPrompt.pro
 
 if("serviceWorker" in navigator){
   serviceWorkerStatus="pending";
-  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js?v=20-5")
+  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js?v=21-2")
     .then(reg=>{serviceWorkerStatus=`registered${reg.active?` (${reg.active.state})`:""}`})
     .catch(err=>{serviceWorkerStatus=`error (${err.name||"unknown"})`}));
 }
