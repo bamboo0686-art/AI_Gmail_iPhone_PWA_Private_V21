@@ -7,16 +7,17 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Gmail AI Agent" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="assets/icon-192.png" />
-  <link rel="stylesheet" href="assets/app.css" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./assets/icon-192.png" />
+  <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+  <link rel="stylesheet" href="./assets/app.css?v=21-2" />
   <title>AI 個人 Gmail 智慧註冊代理中心</title>
 </head>
 <body>
   <div id="app">
     <header class="topbar">
       <div>
-        <div class="eyebrow">iPhone Private PWA · V20</div>
+        <div class="eyebrow">IPHONE PRIVATE PWA · V21</div>
         <h1>Gmail AI Agent</h1>
       </div>
       <button id="installBtn" class="ghost hidden">安裝</button>
@@ -131,7 +132,7 @@
           </div>
         </div>
         <div class="card">
-          <p>支援 CSV。系統會自動辨識「姓名／中文姓名／申請人姓名／Name」等欄位，不再依賴固定工作表名稱。</p>
+          <p>支援 CSV UTF-8。會自動清除 BOM、偵測逗號／分號／Tab 分隔符、掃描前 30 列尋找真正表頭，並辨識「姓名／中文姓名／申請人姓名／Name」等欄位。</p>
           <input type="file" id="csvInput" accept=".csv,text/csv" />
           <div id="importStatus" class="status">尚未匯入</div>
         </div>
@@ -155,6 +156,6 @@
     <div id="modalBody"></div>
   </dialog>
 
-  <script src="assets/app.js?v=20-5"></script>
+  <script src="./assets/app.js?v=21-2"></script>
 </body>
 </html>
