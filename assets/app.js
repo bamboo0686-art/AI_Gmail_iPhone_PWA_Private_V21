@@ -248,7 +248,7 @@ installBtn.onclick=async()=>{if(deferredInstallPrompt){deferredInstallPrompt.pro
 
 if("serviceWorker" in navigator){
   serviceWorkerStatus="pending";
-  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js")
+  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js?v=20-5")
     .then(reg=>{serviceWorkerStatus=`registered${reg.active?` (${reg.active.state})`:""}`})
     .catch(err=>{serviceWorkerStatus=`error (${err.name||"unknown"})`}));
 }
