@@ -3,6 +3,7 @@ const DB_KEY = "xinyu_gmail_agent_v20";
 const AUDIT_KEY = "xinyu_gmail_agent_audit_v20";
 let deferredInstallPrompt = null;
 let currentFilter = "all";
+let serviceWorkerStatus = "unsupported";
 const modalDialog = document.getElementById("modal");
 
 const STAGES = {
@@ -225,7 +226,7 @@ function diagnostics(){
 Tasks: ${t.length}
 Audit events: ${a.length}
 LocalStorage: OK
-Service Worker: ${"serviceWorker" in navigator?"supported":"unsupported"}
+Service Worker: ${serviceWorkerStatus}
 Online: ${navigator.onLine}
 Standalone: ${window.matchMedia("(display-mode: standalone)").matches}</pre>`);
 }
@@ -245,7 +246,12 @@ taskFilters.querySelectorAll("button").forEach(b=>b.onclick=()=>{currentFilter=b
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstallPrompt=e;installBtn.classList.remove("hidden")});
 installBtn.onclick=async()=>{if(deferredInstallPrompt){deferredInstallPrompt.prompt();deferredInstallPrompt=null}else installHelp()};
 
-if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}
+if("serviceWorker" in navigator){
+  serviceWorkerStatus="pending";
+  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js")
+    .then(reg=>{serviceWorkerStatus=`registered${reg.active?` (${reg.active.state})`:""}`})
+    .catch(err=>{serviceWorkerStatus=`error (${err.name||"unknown"})`}));
+}
 window.runAction=runAction;window.markHumanDone=markHumanDone;window.markCompleted=markCompleted;window.setHumanGate=setHumanGate;window.removeTask=removeTask;window.confirmAddTask=confirmAddTask;
 
 renderAll();
