@@ -1,4 +1,4 @@
-const VERSION = "21.0.0-PWA";
+const VERSION = "22.0.0-PWA";
 const DB_KEY = "xinyu_gmail_agent_v20";
 const AUDIT_KEY = "xinyu_gmail_agent_audit_v20";
 let deferredInstallPrompt = null;
@@ -290,6 +290,71 @@ function importDiagnostic(text,rows,scan){
     最佳分數：${Math.max(0,scan.bestScore)}</p>
     <p>實際讀取前 5 列：</p><pre>${escapeHtml(preview)}</pre>`;
 }
+function aiAutoPrecheckTask(t,seenNames=new Set()){
+  const nameKey=normalizeCell(t?.fullName);
+  if(!nameKey){
+    t.stage="failed";t.lastError="姓名缺失";t.lastCheckpoint="AI 預檢失敗：姓名缺失";t.updatedAt=now();
+    audit("ai_precheck_failed",t.lastError,t.id);return false;
+  }
+  if(t.isEnabled===false){
+    t.stage="failed";t.lastError="任務未啟用";t.lastCheckpoint="AI 預檢失敗：任務未啟用";t.updatedAt=now();
+    audit("ai_precheck_failed",t.lastError,t.id);return false;
+  }
+  if(!Object.prototype.hasOwnProperty.call(STAGES,t.stage)){
+    t.stage="failed";t.lastError="任務狀態無效";t.lastCheckpoint="AI 預檢失敗：任務狀態無效";t.updatedAt=now();
+    audit("ai_precheck_failed",t.lastError,t.id);return false;
+  }
+  if(seenNames.has(nameKey)){
+    t.stage="failed";t.lastError="同名任務重複";t.lastCheckpoint="AI 預檢失敗：同名任務重複";t.updatedAt=now();
+    audit("ai_precheck_failed",t.lastError,t.id);return false;
+  }
+  t.stage="prechecked";t.lastError=null;t.lastCheckpoint="AI 自動預檢完成";t.updatedAt=now();
+  audit("ai_precheck","AI 自動預檢完成",t.id);return true;
+}
+function aiAutoGenerateCandidate(t){
+  if(!t.candidateEmail)t.candidateEmail=generateCandidate(t.fullName);
+  t.stage="candidateGenerated";t.lastCheckpoint="AI 自動產生 Gmail 候選名稱";t.updatedAt=now();
+  audit("ai_candidate",`AI 產生候選：${t.candidateEmail}`,t.id);return t.candidateEmail;
+}
+function aiPrepareImportedTasks(taskIds){
+  const tasks=loadTasks(),idSet=new Set(taskIds);
+  const seenNames=new Set(tasks.filter(t=>!idSet.has(t.id)).map(t=>normalizeCell(t.fullName)).filter(Boolean));
+  let prechecked=0,failed=0,queued=0;
+  for(const taskId of taskIds){
+    const t=tasks.find(x=>x.id===taskId);if(!t){failed++;continue}
+    if(!aiAutoPrecheckTask(t,seenNames)){failed++;continue}
+    seenNames.add(normalizeCell(t.fullName));prechecked++;
+    aiAutoGenerateCandidate(t);
+    t.stage="ready";t.lastCheckpoint="AI 已完成資料準備，加入智慧任務佇列";t.updatedAt=now();queued++;
+    audit("ai_queue","AI 已建立可處理任務",t.id);
+  }
+  saveTasks(tasks);
+  return {tasks,prechecked,failed,queued};
+}
+function aiProcessSafeStep(t,signals="",failureMessage=""){
+  if(protectedSignal(signals)){
+    t.stage="waitingHuman";t.lastError=null;t.lastCheckpoint="偵測到本人／安全驗證，已保存 Checkpoint 並轉入 Human Gate";t.updatedAt=now();
+    audit("human_gate",t.lastCheckpoint,t.id);return {status:"waitingHuman",requiresHuman:true};
+  }
+  if(failureMessage){
+    t.retryCount=(t.retryCount||0)+1;t.lastError=failureMessage;t.updatedAt=now();
+    if(t.retryCount>=3){t.stage="deferred";t.lastCheckpoint="Retry 3/3 仍失敗，已轉 Deferred / Exception Center"}
+    else {t.stage="failed";t.lastCheckpoint=`Retry ${t.retryCount}/3 已排入安全重試`}
+    audit("ai_retry",t.lastCheckpoint,t.id);return {status:t.stage,retryCount:t.retryCount};
+  }
+  t.stage="ready";t.lastError=null;t.lastCheckpoint="AI Agent 已接手，等待下一個可安全執行節點";t.updatedAt=now();
+  audit("ai_takeover_step",t.lastCheckpoint,t.id);return {status:"ready",requiresHuman:false};
+}
+function aiTakeOverAfterImport(importedTaskIds){
+  const prepared=aiPrepareImportedTasks(importedTaskIds);
+  const queue=prepared.tasks.filter(t=>t.stage==="ready"&&t.isEnabled).sort((a,b)=>priority(b)-priority(a));
+  if(queue[0])aiProcessSafeStep(queue[0]);
+  saveTasks(prepared.tasks);
+  audit("ai_takeover",`智慧匯入後 AI 接手 ${prepared.queued} 筆；失敗 ${prepared.failed} 筆`);
+  const next=nextRunnable(prepared.tasks);
+  if(next)showAgentDecision(next,{intent:"manageReadyQueue",reason:"智慧匯入完成，AI 已完成預檢、候選產生與優先排序",confidence:.95,requiresHuman:false});
+  return {prechecked:prepared.prechecked,failed:prepared.failed,queued:prepared.queued};
+}
 async function importCSV(file){
   try{
     let text=await file.text();
@@ -316,6 +381,7 @@ async function importCSV(file){
     }
     const tasks=loadTasks();
     const existingNames=new Set(tasks.map(t=>normalizeCell(t.fullName)));
+    const importedTaskIds=[];
     let imported=0, skippedBlank=0, skippedDuplicate=0, errors=0;
     const dataRows=rows.slice(headerIndex+1);
     for(const row of dataRows){
@@ -326,26 +392,32 @@ async function importCSV(file){
         const nk=normalizeCell(name);
         if(!nk){skippedBlank++;continue}
         if(existingNames.has(nk)){skippedDuplicate++;continue}
-        tasks.push(makeTask(name));
+        const newTask=makeTask(name);
+        tasks.push(newTask);importedTaskIds.push(newTask.id);
         existingNames.add(nk);
         imported++;
       }catch{ errors++ }
     }
     saveTasks(tasks);
     audit("import",`CSV 匯入 ${imported} 筆；空白 ${skippedBlank}；重複 ${skippedDuplicate}`);
+    const takeover=aiTakeOverAfterImport(importedTaskIds);
     const accounted=imported+skippedDuplicate+skippedBlank+errors;
-    importStatus.textContent=`成功 ${imported}｜重複 ${skippedDuplicate}｜空白 ${skippedBlank}｜錯誤 ${errors}`;
-    modal("匯入完成",
+    importStatus.textContent=`成功 ${imported}｜AI 接手 ${takeover.queued}｜重複 ${skippedDuplicate}｜錯誤 ${errors}`;
+    modal("匯入完成，AI 已接手",
       `<p>原始資料列：${dataRows.length}<br>
        <strong>成功匯入：${imported}</strong><br>
        重複略過：${skippedDuplicate}<br>
        空白略過：${skippedBlank}<br>
        錯誤：${errors}<br>
        核對合計：${accounted}</p>
+       <p>AI 預檢完成：${takeover.prechecked}<br>
+       AI 已建立可處理任務：${takeover.queued}<br>
+       預檢失敗：${takeover.failed}</p>
        <p>偵測分隔符：${escapeHtml(delimiterLabel(detectDelimiter(text)))}<br>
        實際辨識表頭：第 ${headerIndex+1} 列<br>
        姓名欄位：${escapeHtml(headers[nameIndex])}<br>
-       掃描列數：${scan.scanned}</p>`);
+       掃描列數：${scan.scanned}</p>
+       <p><strong>後續流程已交由 AI Agent 管理。</strong></p>`);
   }catch(err){
     importStatus.textContent=`匯入失敗：${err?.message||err}`;
     modal("匯入錯誤",`<pre>${escapeHtml(err?.stack||String(err))}</pre>`);
@@ -379,7 +451,7 @@ Standalone: ${window.matchMedia("(display-mode: standalone)").matches}</pre>`);
 }
 function about(){
   modal("版本與狀態",`<p><strong>${VERSION}</strong></p>
-  <p>狀態：PWA_PRIVATE_BASELINE_READY</p>
+  <p>狀態：PWA_PRIVATE_V22_AI_TAKEOVER_READY</p>
   <p>本版為 iPhone 私有 PWA，不經 App Store。核心資料預設保存在本機瀏覽器。</p>`);
 }
 
@@ -395,10 +467,11 @@ installBtn.onclick=async()=>{if(deferredInstallPrompt){deferredInstallPrompt.pro
 
 if("serviceWorker" in navigator){
   serviceWorkerStatus="pending";
-  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js?v=21-2")
+  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js?v=22-2")
     .then(reg=>{serviceWorkerStatus=`registered${reg.active?` (${reg.active.state})`:""}`})
     .catch(err=>{serviceWorkerStatus=`error (${err.name||"unknown"})`}));
 }
 window.runAction=runAction;window.markHumanDone=markHumanDone;window.markCompleted=markCompleted;window.setHumanGate=setHumanGate;window.removeTask=removeTask;window.confirmAddTask=confirmAddTask;
+window.aiAutoPrecheckTask=aiAutoPrecheckTask;window.aiAutoGenerateCandidate=aiAutoGenerateCandidate;window.aiPrepareImportedTasks=aiPrepareImportedTasks;window.aiProcessSafeStep=aiProcessSafeStep;window.aiTakeOverAfterImport=aiTakeOverAfterImport;
 
 renderAll();
