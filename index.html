@@ -10,14 +10,14 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./assets/icon-192.png" />
   <link rel="apple-touch-icon" href="./assets/icon-192.png" />
-  <link rel="stylesheet" href="./assets/app.css?v=21-2" />
+  <link rel="stylesheet" href="./assets/app.css?v=22-2" />
   <title>AI 個人 Gmail 智慧註冊代理中心</title>
 </head>
 <body>
   <div id="app">
     <header class="topbar">
       <div>
-        <div class="eyebrow">IPHONE PRIVATE PWA · V21</div>
+        <div class="eyebrow">IPHONE PRIVATE PWA · V22</div>
         <h1>Gmail AI Agent</h1>
       </div>
       <button id="installBtn" class="ghost hidden">安裝</button>
@@ -115,7 +115,7 @@
         </div>
 
         <div class="menu-list">
-          <button data-nav="import" class="menu-item"><span>智慧匯入</span><span>›</span></button>
+          <button data-nav="import" class="menu-item"><span>智慧匯入＋AI 接手</span><span>›</span></button>
           <button id="backupRestoreBtn" class="menu-item"><span>備份／還原</span><span>›</span></button>
           <button id="diagnosticsBtn" class="menu-item"><span>診斷與恢復</span><span>›</span></button>
           <button id="installHelpBtn" class="menu-item"><span>加入 iPhone 主畫面</span><span>›</span></button>
@@ -132,7 +132,7 @@
           </div>
         </div>
         <div class="card">
-          <p>支援 CSV UTF-8。會自動清除 BOM、偵測逗號／分號／Tab 分隔符、掃描前 30 列尋找真正表頭，並辨識「姓名／中文姓名／申請人姓名／Name」等欄位。</p>
+          <p>支援 CSV UTF-8。會自動清除 BOM、偵測逗號／分號／Tab／| 分隔符、掃描前 30 列尋找真正表頭；匯入後由 AI 自動預檢、產生 Gmail 候選並建立智慧任務佇列。</p>
           <input type="file" id="csvInput" accept=".csv,text/csv" />
           <div id="importStatus" class="status">尚未匯入</div>
         </div>
@@ -156,6 +156,6 @@
     <div id="modalBody"></div>
   </dialog>
 
-  <script src="./assets/app.js?v=21-2"></script>
+  <script src="./assets/app.js?v=22-2"></script>
 </body>
 </html>
