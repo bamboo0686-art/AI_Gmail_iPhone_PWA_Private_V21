@@ -1,4 +1,4 @@
-AI 個人 Gmail 智慧註冊代理中心｜iPhone PWA 私有直接使用版 V21
+AI 個人 Gmail 智慧註冊代理中心｜iPhone PWA 私有直接使用版 V22
 
 重要：
 1. 這不是 IPA，也不需要 Mac 或 App Store。
